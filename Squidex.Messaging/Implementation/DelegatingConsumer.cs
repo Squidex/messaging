@@ -122,7 +122,6 @@ namespace Squidex.Messaging.Implementation
                     await ack.OnSuccessAsync(transportMessage);
                 }
             }
-
         }
 
         private async Task OnMessageAsync(TransportMessage transportMessage, IMessageAck ack,

@@ -9,7 +9,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Squidex.Messaging.Implementation.MongoDB
 {
-    internal class SimpleTimer : IDisposable
+    internal sealed class SimpleTimer : IDisposable
     {
         private readonly CancellationTokenSource stopToken = new CancellationTokenSource();
 

@@ -8,6 +8,8 @@
 using Squidex.Messaging.Implementation;
 using Xunit;
 
+#pragma warning disable SA1300 // Element should begin with upper-case letter
+
 namespace Squidex.Messaging
 {
     public class MongoDbMessagingPrefetchTests : MessagingTestsBase, IClassFixture<MongoDbFixture>
