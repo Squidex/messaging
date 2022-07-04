@@ -13,6 +13,8 @@ namespace Squidex.Messaging.Implementation.MongoDB
     {
         private readonly CancellationTokenSource stopToken = new CancellationTokenSource();
 
+        public bool IsDisposed => stopToken.IsCancellationRequested;
+
         public SimpleTimer(Func<CancellationToken, Task> action, TimeSpan interval, ILogger log)
         {
             Task.Run(async () =>
@@ -45,7 +47,7 @@ namespace Squidex.Messaging.Implementation.MongoDB
 
         public void Dispose()
         {
-            stopToken.Dispose();
+            stopToken.Cancel();
         }
     }
 }

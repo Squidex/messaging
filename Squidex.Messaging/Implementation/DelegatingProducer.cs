@@ -15,14 +15,16 @@ namespace Squidex.Messaging.Implementation
         private readonly string activity = $"Messaging.Produce({typeof(T).Name})";
         private readonly ITransport transport;
         private readonly ITransportSerializer serializer;
+        private readonly IClock clock;
         private readonly MessagingOptions<T> options;
 
         public DelegatingProducer(
             ITransportFactory transportProvider,
             ITransportSerializer serializer,
-            IOptions<MessagingOptions<T>> options)
+            IOptions<MessagingOptions<T>> options, IClock clock)
         {
             this.serializer = serializer;
+            this.clock = clock;
             this.options = options.Value;
             this.transport = transportProvider.GetTransport(options.Value.ChannelName);
         }
@@ -56,11 +58,13 @@ namespace Squidex.Messaging.Implementation
                     Key = key,
                     Headers = new Dictionary<string, string>
                     {
+                        [Headers.Id] = Guid.NewGuid().ToString(),
                         [Headers.Type] = message?.GetType().AssemblyQualifiedName ?? "null",
                         [Headers.TimeExpires] = options.Expires.ToString(),
                         [Headers.TimeRetry] = options.Timeout.ToString(),
+                        [Headers.Key] = key ?? string.Empty
                     },
-                    Created = DateTime.UtcNow
+                    Created = clock.UtcNow
                 };
 
                 await transport.ProduceAsync(transportMessage, ct);

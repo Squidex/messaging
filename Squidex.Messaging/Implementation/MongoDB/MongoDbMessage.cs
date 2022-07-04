@@ -15,27 +15,21 @@ namespace Squidex.Messaging.Implementation.MongoDB
     {
         public string Id { get; init; }
 
-        [BsonElement("b")]
-        public byte[] MessageBody { get; init; }
+        public byte[] MessageData { get; init; }
 
-        [BsonElement("h")]
-        public Dictionary<string, string>? MessageHeaders { get; init; }
+        public Dictionary<string, string> MessageHeaders { get; init; }
 
-        [BsonElement("ttl")]
+        [BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
         public DateTime TimeToLive { get; init; }
 
-        [BsonElement("ttr")]
-        public DateTime TimeToRetry { get; init; }
+        [BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
+        public DateTime? TimeHandled { get; init; }
 
-        [BsonElement("pf")]
-        public string PrefetchId { get; set; }
-
-        [BsonElement("p")]
-        public bool IsHandled { get; init; }
+        public string? PrefetchId { get; set; }
 
         public TransportMessage ToTransportMessage()
         {
-            return new TransportMessage(MessageBody)
+            return new TransportMessage(MessageData)
             {
                 Headers = MessageHeaders
             };

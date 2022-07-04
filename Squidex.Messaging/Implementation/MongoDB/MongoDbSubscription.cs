@@ -15,14 +15,16 @@ namespace Squidex.Messaging.Implementation.MongoDB
         private static readonly UpdateDefinitionBuilder<MongoDbMessage> Update = Builders<MongoDbMessage>.Update;
         private readonly IMongoCollection<MongoDbMessage> collection;
         private readonly MongoDbTransportOptions options;
+        private readonly IClock clock;
         private readonly ILogger<MongoDbTransport> log;
         private readonly SimpleTimer timer;
 
         public MongoDbSubscription(MessageTransportCallback callback, IMongoCollection<MongoDbMessage> collection,
-            MongoDbTransportOptions options, ILogger<MongoDbTransport> log)
+            MongoDbTransportOptions options, IClock clock, ILogger<MongoDbTransport> log)
         {
             this.collection = collection;
             this.options = options;
+            this.clock = clock;
             this.log = log;
 
             timer = new SimpleTimer(async ct =>
@@ -50,11 +52,13 @@ namespace Squidex.Messaging.Implementation.MongoDB
         private async Task<bool> PollNormalAsync(MessageTransportCallback callback,
             CancellationToken ct)
         {
+            var now = clock.UtcNow;
+
             // We can fetch an document in one go with this operation.
             var mongoMessage =
-                await collection.FindOneAndUpdateAsync(x => !x.IsHandled,
+                await collection.FindOneAndUpdateAsync(x => x.TimeHandled == null && x.TimeToLive > now,
                     Update
-                        .Set(x => x.IsHandled, true),
+                        .Set(x => x.TimeHandled, now),
                     cancellationToken: ct);
 
             if (mongoMessage == null || ct.IsCancellationRequested)
@@ -69,9 +73,11 @@ namespace Squidex.Messaging.Implementation.MongoDB
         private async Task<bool> PollPrefetchAsync(MessageTransportCallback callback,
             CancellationToken ct)
         {
+            var now = clock.UtcNow;
+
             // There is no way to limit the updates, therefore we have to query candidates first.
             var candidates =
-                await collection.Find(x => !x.IsHandled)
+                await collection.Find(x => x.TimeHandled == null && x.TimeToLive > now)
                     .Limit(options.Prefetch)
                     .Project<MongoMessageId>(Builders<MongoDbMessage>.Projection.Include(x => x.Id))
                     .ToListAsync(ct);
@@ -87,9 +93,9 @@ namespace Squidex.Messaging.Implementation.MongoDB
             var updateId = Guid.NewGuid().ToString();
 
             var update =
-                await collection.UpdateManyAsync(x => ids.Contains(x.Id),
+                await collection.UpdateManyAsync(x => ids.Contains(x.Id) && x.PrefetchId == null,
                     Update
-                        .Set(x => x.IsHandled, true)
+                        .Set(x => x.TimeHandled, now)
                         .Set(x => x.PrefetchId, updateId),
                     cancellationToken: ct);
 
@@ -132,7 +138,7 @@ namespace Squidex.Messaging.Implementation.MongoDB
         public async Task OnErrorAsync(TransportMessage message,
             CancellationToken ct = default)
         {
-            if (message.Headers == null || !message.Headers.TryGetValue("mongo.id", out var id))
+            if (timer.IsDisposed || message.Headers == null || !message.Headers.TryGetValue(Headers.Id, out var id))
             {
                 log.LogWarning("Transport message has no MongoDB ID.");
                 return;
@@ -140,7 +146,7 @@ namespace Squidex.Messaging.Implementation.MongoDB
 
             try
             {
-                await collection.UpdateOneAsync(x => x.Id == id, Update.Set(x => x.IsHandled, false), null, ct);
+                await collection.UpdateOneAsync(x => x.Id == id, Update.Set(x => x.TimeHandled, null), null, ct);
             }
             catch (Exception ex)
             {
@@ -151,7 +157,7 @@ namespace Squidex.Messaging.Implementation.MongoDB
         public async Task OnSuccessAsync(TransportMessage message,
             CancellationToken ct = default)
         {
-            if (message.Headers == null || !message.Headers.TryGetValue("mongo.id", out var id))
+            if (timer.IsDisposed || message.Headers == null || !message.Headers.TryGetValue(Headers.Id, out var id))
             {
                 log.LogWarning("Transport message has no MongoDB ID.");
                 return;

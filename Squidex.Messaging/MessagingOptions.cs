@@ -17,7 +17,7 @@ namespace Squidex.Messaging
 
         public int NumWorkers { get; set; } = 1;
 
-        public TimeSpan Timeout { get; set; } = TimeSpan.FromHours(30);
+        public TimeSpan Timeout { get; set; } = TimeSpan.FromMinutes(30);
 
         public TimeSpan Expires { get; set; } = TimeSpan.FromHours(1);
     }

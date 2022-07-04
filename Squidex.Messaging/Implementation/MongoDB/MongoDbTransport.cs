@@ -17,6 +17,7 @@ namespace Squidex.Messaging.Implementation.MongoDB
         private static readonly UpdateDefinitionBuilder<MongoDbMessage> Update = Builders<MongoDbMessage>.Update;
         private readonly IMongoCollection<MongoDbMessage> collection;
         private readonly MongoDbTransportOptions options;
+        private readonly string channelName;
         private readonly IClock clock;
         private readonly ILogger<MongoDbTransport> log;
         private SimpleTimer? updateTimer;
@@ -27,6 +28,7 @@ namespace Squidex.Messaging.Implementation.MongoDB
             IOptions<MongoDbTransportOptions> options, IClock clock, ILogger<MongoDbTransport> log)
         {
             this.options = options.Value;
+            this.channelName = channelName;
             this.clock = clock;
             this.log = log;
 
@@ -48,7 +50,7 @@ namespace Squidex.Messaging.Implementation.MongoDB
                 {
                     new CreateIndexModel<MongoDbMessage>(
                         Builders<MongoDbMessage>.IndexKeys
-                            .Ascending(x => x.IsHandled)),
+                            .Ascending(x => x.TimeHandled)),
                     new CreateIndexModel<MongoDbMessage>(
                         Builders<MongoDbMessage>.IndexKeys
                             .Ascending(x => x.TimeToLive),
@@ -75,7 +77,7 @@ namespace Squidex.Messaging.Implementation.MongoDB
             return Task.CompletedTask;
         }
 
-        public void CleanupOldEntries(TimeSpan timeout)
+        public void CleanupOldEntries(TimeSpan timeout, TimeSpan expires)
         {
             if (updateTimer != null)
             {
@@ -86,49 +88,43 @@ namespace Squidex.Messaging.Implementation.MongoDB
             {
                 var now = clock.UtcNow;
 
-                await collection.UpdateManyAsync(x => x.IsHandled && x.TimeToRetry < now,
+                var timedout = now - timeout;
+
+                var update = await collection.UpdateManyAsync(x => x.TimeHandled != null && x.TimeHandled < timedout,
                     Update
-                        .Set(x => x.IsHandled, false)
-                        .Set(x => x.TimeToRetry, now + timeout),
+                        .Set(x => x.TimeHandled, null)
+                        .Set(x => x.TimeToLive, now + expires)
+                        .Set(x => x.PrefetchId, null),
                     cancellationToken: ct);
+
+                if (update.IsModifiedCountAvailable && update.ModifiedCount > 0)
+                {
+                    log.LogInformation("{channelName}: Items reset: {count}.", channelName, update.ModifiedCount);
+                }
             }, options.UpdateInterval, log);
         }
 
         public Task ProduceAsync(TransportMessage transportMessage,
             CancellationToken ct = default)
         {
+            var headers = transportMessage.Headers.ToDictionary(x => x.Key, x => x.Value);
+
             var request = new MongoDbMessage
             {
-                Id = Guid.NewGuid().ToString(),
-                MessageBody = transportMessage.Data,
-                MessageHeaders = transportMessage.Headers?.ToDictionary(x => x.Key, x => x.Value),
-                TimeToLive = GetTimeToLive(transportMessage.Headers),
-                TimeToRetry = GetTimeToRetry(transportMessage.Headers)
+                Id = headers[Headers.Id],
+                MessageData = transportMessage.Data,
+                MessageHeaders = headers,
+                TimeToLive = GetTimeToLive(headers),
             };
 
             return collection.InsertOneAsync(request, null, ct);
         }
 
-        private DateTime GetTimeToLive(IReadOnlyDictionary<string, string>? headers)
+        private DateTime GetTimeToLive(IReadOnlyDictionary<string, string> headers)
         {
             var time = TimeSpan.FromDays(30);
 
-            if (headers != null && headers.TryGetValue(Headers.TimeExpires, out var timeToBeReceivedString))
-            {
-                if (TimeSpan.TryParse(timeToBeReceivedString, CultureInfo.InvariantCulture, out var parsed))
-                {
-                    time = parsed;
-                }
-            }
-
-            return clock.UtcNow + time;
-        }
-
-        private DateTime GetTimeToRetry(IReadOnlyDictionary<string, string>? headers)
-        {
-            var time = TimeSpan.FromDays(10000);
-
-            if (headers != null && headers.TryGetValue(Headers.TimeRetry, out var timeToBeReceivedString))
+            if (headers.TryGetValue(Headers.TimeExpires, out var timeToBeReceivedString))
             {
                 if (TimeSpan.TryParse(timeToBeReceivedString, CultureInfo.InvariantCulture, out var parsed))
                 {
@@ -141,7 +137,7 @@ namespace Squidex.Messaging.Implementation.MongoDB
 
         public Task<IAsyncDisposable> SubscribeAsync(MessageTransportCallback callback, CancellationToken ct = default)
         {
-            var subscription = new MongoDbSubscription(callback, collection, options, log);
+            var subscription = new MongoDbSubscription(callback, collection, options, clock, log);
 
             return Task.FromResult<IAsyncDisposable>(subscription);
         }

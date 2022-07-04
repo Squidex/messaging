@@ -22,6 +22,6 @@ namespace Squidex.Messaging.Implementation
         Task ProduceAsync(TransportMessage transportMessage,
             CancellationToken ct = default);
 
-        void CleanupOldEntries(TimeSpan timeout);
+        void CleanupOldEntries(TimeSpan timeout, TimeSpan expires);
     }
 }

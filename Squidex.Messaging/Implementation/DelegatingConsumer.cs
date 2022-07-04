@@ -28,6 +28,7 @@ namespace Squidex.Messaging.Implementation
         private readonly IEnumerable<IMessageHandler<T>> handlers;
         private readonly ILogger<DelegatingConsumer<T>> log;
         private readonly string activity = $"Messaging.Consume({typeof(T).Name})";
+        private bool isReleased;
 
         sealed record ScheduledMessage(T Message, TransportMessage TransportMessage, IMessageAck Ack);
 
@@ -51,7 +52,9 @@ namespace Squidex.Messaging.Implementation
 
             worker = new ActionBlock<ScheduledMessage>(OnSerializedMessage, new ExecutionDataflowBlockOptions
             {
-                MaxDegreeOfParallelism = options.Value.NumWorkers
+                MaxMessagesPerTask = 1,
+                MaxDegreeOfParallelism = options.Value.NumWorkers,
+                BoundedCapacity = 1
             });
         }
 
@@ -69,13 +72,15 @@ namespace Squidex.Messaging.Implementation
                     subscriptions.Add(subscription);
                 }
 
-                transport.CleanupOldEntries(options.Timeout);
+                transport.CleanupOldEntries(options.Timeout, options.Expires);
             }
         }
 
         public async Task ReleaseAsync(
             CancellationToken ct)
         {
+            isReleased = true;
+
             await transport.ReleaseAsync(ct);
         }
 
@@ -83,34 +88,51 @@ namespace Squidex.Messaging.Implementation
         {
             var (message, transportMessage, ack) = input;
 
-            foreach (var handler in handlers)
+            try
             {
-                try
+                foreach (var handler in handlers)
                 {
-                    using (var cts = new CancellationTokenSource(options.Timeout))
+                    if (isReleased)
                     {
-                        await handler.HandleAsync(message, cts.Token);
+                        return;
+                    }
+
+                    try
+                    {
+                        using (var cts = new CancellationTokenSource(options.Timeout))
+                        {
+                            await handler.HandleAsync(message, cts.Token);
+                        }
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        continue;
+                    }
+                    catch (Exception ex)
+                    {
+                        log.LogError(ex, "Failed to consume message for system {system}.", Name);
                     }
                 }
-                catch (OperationCanceledException)
+            }
+            finally
+            {
+                if (!isReleased)
                 {
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    log.LogError(ex, "Failed to consume message for system {system}.", Name);
-                }
-                finally
-                {
-                    // Ingore cancellation, better to delete the message even if cancelled.
+                    // Ignore cancellation, better to delete the message, even if cancelled.
                     await ack.OnSuccessAsync(transportMessage);
                 }
             }
+
         }
 
         private async Task OnMessageAsync(TransportMessage transportMessage, IMessageAck ack,
             CancellationToken ct)
         {
+            if (isReleased)
+            {
+                return;
+            }
+
             using (var trace = MessagingTelemetry.Activities.StartActivity(activity))
             {
                 if (transportMessage.Created != default && trace?.Id != null)

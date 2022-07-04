@@ -5,26 +5,33 @@
 //  All rights reserved. Licensed under the MIT license.
 // ==========================================================================
 
-using MongoDB.Driver;
 using Squidex.Messaging.Implementation;
+using Xunit;
 
 namespace Squidex.Messaging
 {
-    public class MongoDbMessagingPrefetchTests : MessagingTestsBase
+    public class MongoDbMessagingPrefetchTests : MessagingTestsBase, IClassFixture<MongoDbFixture>
     {
+        public MongoDbFixture _ { get; }
+
+        public MongoDbMessagingPrefetchTests(MongoDbFixture fixture)
+        {
+            _ = fixture;
+        }
+
         protected override IServiceProvider CreateServices<T>(string channelName, IMessageHandler<T> handler, IClock clock)
         {
-            var mongoClient = new MongoClient("mongodb://localhost");
-            var mongoDatabase = mongoClient.GetDatabase("Messaging_Tests");
-
             var services =
                 new ServiceCollection()
+                    .AddSingleton(_.Database)
                     .AddLogging()
                     .AddSingleton(clock)
                     .AddSingleton(handler)
-                    .AddSingleton(mongoDatabase)
-                    .AddMongoDbTransport(TestHelpers.Configuration, x => x.Prefetch = 100)
-                    .AddMessaging<T>(channelName)
+                    .AddMongoDbTransport(TestHelpers.Configuration, x => x.Prefetch = 5)
+                    .AddMessaging<T>(channelName, options =>
+                    {
+                        options.Expires = TimeSpan.FromDays(1);
+                    })
                     .BuildServiceProvider();
 
             return services;

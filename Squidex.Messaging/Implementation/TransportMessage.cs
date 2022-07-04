@@ -17,6 +17,6 @@ namespace Squidex.Messaging.Implementation
 
         public DateTime Created { get; init; }
 
-        public IReadOnlyDictionary<string, string>? Headers { get; init; }
+        public IReadOnlyDictionary<string, string> Headers { get; init; }
     }
 }
