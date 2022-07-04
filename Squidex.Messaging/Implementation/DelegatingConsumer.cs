@@ -23,7 +23,7 @@ namespace Squidex.Messaging.Implementation
         private readonly string activity;
         private readonly string channelName;
         private readonly List<IAsyncDisposable> subscriptions = new List<IAsyncDisposable>();
-        private readonly ChannelOptions options;
+        private readonly ChannelOptions channelOptions;
         private readonly ActionBlock<ScheduledMessage> worker;
         private readonly HandlerPipeline pipeline;
         private readonly ITransportSerializer serializer;
@@ -44,23 +44,23 @@ namespace Squidex.Messaging.Implementation
             HandlerPipeline pipeline,
             ITransportSerializer serializer,
             ITransportFactory transportFactory,
-            IOptionsSnapshot<ChannelOptions> options,
+            IOptionsMonitor<ChannelOptions> channelOptions,
             ILogger<DelegatingConsumer> log)
         {
             activity = $"Messaging.Consume({channelName})";
 
             transport = transportFactory.GetTransport(channelName);
 
-            this.options = options.Get(channelName);
-            this.channelName = channelName;
             this.pipeline = pipeline;
+            this.channelName = channelName;
+            this.channelOptions = channelOptions.Get(channelName);
             this.serializer = serializer;
             this.log = log;
 
             worker = new ActionBlock<ScheduledMessage>(OnSerializedMessage, new ExecutionDataflowBlockOptions
             {
                 MaxMessagesPerTask = 1,
-                MaxDegreeOfParallelism = options.Value.NumWorkers,
+                MaxDegreeOfParallelism = this.channelOptions.NumWorkers,
                 BoundedCapacity = 1
             });
         }
@@ -76,14 +76,14 @@ namespace Squidex.Messaging.Implementation
         {
             if (pipeline.HasHandlers)
             {
-                for (var i = 0; i < options.NumSubscriptions; i++)
+                for (var i = 0; i < channelOptions.NumSubscriptions; i++)
                 {
                     var subscription = await transport.SubscribeAsync(OnMessageAsync, ct);
 
                     subscriptions.Add(subscription);
                 }
 
-                transport.CleanupOldEntries(options.Timeout, options.Expires);
+                transport.CleanupOldEntries(channelOptions.Timeout, channelOptions.Expires);
             }
         }
 
@@ -112,7 +112,7 @@ namespace Squidex.Messaging.Implementation
 
                     try
                     {
-                        using (var cts = new CancellationTokenSource(options.Timeout))
+                        using (var cts = new CancellationTokenSource(channelOptions.Timeout))
                         {
                             await handler(message, cts.Token);
                         }

@@ -17,7 +17,7 @@ namespace Squidex.Messaging.Implementation
         private readonly ITransport transport;
         private readonly ITransportSerializer serializer;
         private readonly IClock clock;
-        private readonly ChannelOptions options;
+        private readonly ChannelOptions channelOptions;
 
         public string ChannelName => channelName;
 
@@ -25,14 +25,14 @@ namespace Squidex.Messaging.Implementation
             string channelName,
             ITransportFactory transportProvider,
             ITransportSerializer serializer,
-            IOptionsSnapshot<ChannelOptions> options, IClock clock)
+            IOptionsMonitor<ChannelOptions> channelOptions, IClock clock)
         {
             activity = $"Messaging.Produce({channelName})";
 
-            this.channelName = channelName;
             this.serializer = serializer;
             this.clock = clock;
-            this.options = options.Get(channelName);
+            this.channelName = channelName;
+            this.channelOptions = channelOptions.Get(channelName);
             this.transport = transportProvider.GetTransport(channelName);
         }
 
@@ -71,8 +71,8 @@ namespace Squidex.Messaging.Implementation
                     {
                         [Headers.Id] = Guid.NewGuid().ToString(),
                         [Headers.Type] = message?.GetType().AssemblyQualifiedName ?? "null",
-                        [Headers.TimeExpires] = options.Expires.ToString(),
-                        [Headers.TimeRetry] = options.Timeout.ToString(),
+                        [Headers.TimeExpires] = channelOptions.Expires.ToString(),
+                        [Headers.TimeRetry] = channelOptions.Timeout.ToString(),
                         [Headers.Key] = key ?? string.Empty
                     },
                     Created = clock.UtcNow
