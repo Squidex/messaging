@@ -18,35 +18,42 @@ using Squidex.Hosting;
 
 namespace Squidex.Messaging.Implementation
 {
-    public sealed class DelegatingConsumer<T> : IInitializable
+    internal sealed class DelegatingConsumer : IInitializable, IBackgroundProcess
     {
+        private readonly string activity;
+        private readonly string channelName;
         private readonly List<IAsyncDisposable> subscriptions = new List<IAsyncDisposable>();
-        private readonly MessagingOptions<T> options;
+        private readonly ChannelOptions options;
         private readonly ActionBlock<ScheduledMessage> worker;
+        private readonly HandlerPipeline pipeline;
         private readonly ITransportSerializer serializer;
         private readonly ITransport transport;
-        private readonly IEnumerable<IMessageHandler<T>> handlers;
-        private readonly ILogger<DelegatingConsumer<T>> log;
-        private readonly string activity = $"Messaging.Consume({typeof(T).Name})";
+        private readonly ILogger<DelegatingConsumer> log;
         private bool isReleased;
 
-        sealed record ScheduledMessage(T Message, TransportMessage TransportMessage, IMessageAck Ack);
+        sealed record ScheduledMessage(object Message, TransportMessage TransportMessage, IMessageAck Ack);
 
-        public string Name => $"MessagingConsumer({typeof(T).Name})";
+        public string Name => activity;
+
+        public string ChannelName => channelName;
 
         public int Order => int.MaxValue;
 
         public DelegatingConsumer(
-            IEnumerable<IMessageHandler<T>> handlers,
+            string channelName,
+            HandlerPipeline pipeline,
             ITransportSerializer serializer,
             ITransportFactory transportFactory,
-            IOptions<MessagingOptions<T>> options,
-            ILogger<DelegatingConsumer<T>> log)
+            IOptionsSnapshot<ChannelOptions> options,
+            ILogger<DelegatingConsumer> log)
         {
-            transport = transportFactory.GetTransport(options.Value.ChannelName);
+            activity = $"Messaging.Consume({channelName})";
 
-            this.handlers = handlers;
-            this.options = options.Value;
+            transport = transportFactory.GetTransport(channelName);
+
+            this.options = options.Get(channelName);
+            this.channelName = channelName;
+            this.pipeline = pipeline;
             this.serializer = serializer;
             this.log = log;
 
@@ -62,8 +69,12 @@ namespace Squidex.Messaging.Implementation
             CancellationToken ct)
         {
             await transport.InitializeAsync(ct);
+        }
 
-            if (handlers.Any())
+        public async Task StartAsync(
+            CancellationToken ct)
+        {
+            if (pipeline.HasHandlers)
             {
                 for (var i = 0; i < options.NumSubscriptions; i++)
                 {
@@ -90,6 +101,8 @@ namespace Squidex.Messaging.Implementation
 
             try
             {
+                var handlers = pipeline.GetHandlers(message);
+
                 foreach (var handler in handlers)
                 {
                     if (isReleased)
@@ -101,7 +114,7 @@ namespace Squidex.Messaging.Implementation
                     {
                         using (var cts = new CancellationTokenSource(options.Timeout))
                         {
-                            await handler.HandleAsync(message, cts.Token);
+                            await handler(message, cts.Token);
                         }
                     }
                     catch (OperationCanceledException)
@@ -166,7 +179,7 @@ namespace Squidex.Messaging.Implementation
                     return;
                 }
 
-                var message = serializer.Deserialize<T>(transportMessage.Data, type);
+                var message = serializer.Deserialize(transportMessage.Data, type);
 
                 await worker.SendAsync(new ScheduledMessage(message, transportMessage, ack), ct);
             }

@@ -24,14 +24,14 @@ namespace Squidex.Messaging.Implementation
             serializer = JsonSerializer.CreateDefault(settings);
         }
 
-        public T Deserialize<T>(byte[] data, Type type)
+        public object Deserialize(byte[] data, Type type)
         {
             using var streamBuffer = new MemoryStream(data);
             using var streamReader = new StreamReader(streamBuffer, Encoding.UTF8);
 
             using var jsonReader = new JsonTextReader(streamReader);
 
-            return (T)serializer.Deserialize(jsonReader, type)!;
+            return serializer.Deserialize(jsonReader, type)!;
         }
 
         public byte[] Serialize(object? value)

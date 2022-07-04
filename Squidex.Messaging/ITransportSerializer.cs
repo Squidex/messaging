@@ -9,7 +9,7 @@ namespace Squidex.Messaging
 {
     public interface ITransportSerializer
     {
-        T Deserialize<T>(byte[] data, Type type);
+        object Deserialize(byte[] data, Type type);
 
         byte[] Serialize(object? value);
     }

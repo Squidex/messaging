@@ -7,9 +7,16 @@
 
 namespace Squidex.Messaging
 {
-    public interface IMessageProducer<T>
+    public sealed class RoutingCollection : List<(Func<object, bool> Predicate, string ChannelName)>
     {
-        Task ProduceAsync(T message, string? key = null,
-            CancellationToken ct = default);
+        public void Add(Func<object, bool> predicate, string channelName)
+        {
+            Add((predicate, channelName));
+        }
+
+        public void AddFallback(string channelName)
+        {
+            Add((x => true, channelName));
+        }
     }
 }

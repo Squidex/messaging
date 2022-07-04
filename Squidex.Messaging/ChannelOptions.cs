@@ -7,13 +7,14 @@
 
 namespace Squidex.Messaging
 {
-    public interface IMessageHandler<in T> : IMessageHandler
+    public sealed class ChannelOptions
     {
-        Task HandleAsync(T message,
-            CancellationToken ct = default);
-    }
+        public int NumSubscriptions { get; set; } = 1;
 
-    public interface IMessageHandler
-    {
+        public int NumWorkers { get; set; } = 1;
+
+        public TimeSpan Timeout { get; set; } = TimeSpan.FromMinutes(30);
+
+        public TimeSpan Expires { get; set; } = TimeSpan.FromHours(1);
     }
 }

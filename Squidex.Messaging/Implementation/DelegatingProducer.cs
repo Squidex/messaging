@@ -10,23 +10,34 @@ using Squidex.Hosting;
 
 namespace Squidex.Messaging.Implementation
 {
-    public sealed class DelegatingProducer<T> : IMessageProducer<T>, IInitializable
+    public sealed class DelegatingProducer : IInternalMessageProducer, IInitializable
     {
-        private readonly string activity = $"Messaging.Produce({typeof(T).Name})";
+        private readonly string activity;
+        private readonly string channelName;
         private readonly ITransport transport;
         private readonly ITransportSerializer serializer;
         private readonly IClock clock;
-        private readonly MessagingOptions<T> options;
+        private readonly ChannelOptions options;
+
+        public string ChannelName => channelName;
 
         public DelegatingProducer(
+            string channelName,
             ITransportFactory transportProvider,
             ITransportSerializer serializer,
-            IOptions<MessagingOptions<T>> options, IClock clock)
+            IOptionsSnapshot<ChannelOptions> options, IClock clock)
         {
+            activity = $"Messaging.Produce({channelName})";
+
+            this.channelName = channelName;
             this.serializer = serializer;
             this.clock = clock;
-            this.options = options.Value;
-            this.transport = transportProvider.GetTransport(options.Value.ChannelName);
+            this.options = options.Get(channelName);
+            this.transport = transportProvider.GetTransport(channelName);
+        }
+
+        public DelegatingProducer()
+        {
         }
 
         public Task InitializeAsync(
@@ -41,7 +52,7 @@ namespace Squidex.Messaging.Implementation
             return transport.ReleaseAsync(ct);
         }
 
-        public async Task ProduceAsync(T message, string? key = null,
+        public async Task ProduceAsync(object message, string? key = null,
             CancellationToken ct = default)
         {
             using (MessagingTelemetry.Activities.StartActivity(activity))

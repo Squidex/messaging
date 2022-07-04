@@ -5,18 +5,14 @@
 //  All rights reserved. Licensed under the MIT license.
 // ==========================================================================
 
-using Squidex.Hosting;
-
-#pragma warning disable MA0048 // File name must match type name
-
-namespace Squidex.Messaging.Implementation
+namespace Squidex.Messaging
 {
-    public delegate Task MessageCallback<T>(Envelope<T> envelope,
-            CancellationToken ct);
-
-    public interface IMessaging<T> : IMessageProducer<Envelope<T>>, IInitializable
+    public interface IMessageBus
     {
-        Task SubscribeAsync(MessageCallback<T> onMessage,
+        Task PublishAsync(object message, string? key = null,
+            CancellationToken ct = default);
+
+        Task PublishToChannelAsync(object message, string channelName, string? key = null,
             CancellationToken ct = default);
     }
 }

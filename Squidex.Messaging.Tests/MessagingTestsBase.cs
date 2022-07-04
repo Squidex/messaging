@@ -16,7 +16,7 @@ namespace Squidex.Messaging
 {
     public abstract class MessagingTestsBase
     {
-        protected abstract IServiceProvider CreateServices<T>(string channelName, IMessageHandler<T> handler, IClock clock);
+        protected abstract void ConfigureServices(IServiceCollection services, string channelName);
 
         private sealed class Message : BaseMessage
         {
@@ -27,21 +27,41 @@ namespace Squidex.Messaging
         {
         }
 
-        private async Task<(IAsyncDisposable, IMessageProducer<T>)> CreateMessagingAsync<T>(string channelName, IMessageHandler<T> handler, DateTime now)
+        private async Task<(IAsyncDisposable, IMessageBus)> CreateMessagingAsync(string channelName, IMessageHandler handler, DateTime now,
+            Action<MessagingOptions>? configure = null)
         {
             var clock = A.Fake<IClock>();
 
             A.CallTo(() => clock.UtcNow)
                 .Returns(now);
 
-            var serviceProvider = CreateServices(channelName, handler, clock);
+            var servicerCollection =
+                new ServiceCollection()
+                    .AddLogging()
+                    .AddSingleton(clock)
+                    .AddSingleton(handler)
+                    .AddMessaging(options =>
+                    {
+                        options.Routing.AddFallback(channelName);
+
+                        configure?.Invoke(options);
+                    });
+
+            ConfigureServices(servicerCollection, channelName);
+
+            var serviceProvider = servicerCollection.BuildServiceProvider();
 
             foreach (var initializable in serviceProvider.GetRequiredService<IEnumerable<IInitializable>>())
             {
                 await initializable.InitializeAsync(default);
             }
 
-            var producer = serviceProvider.GetRequiredService<IMessageProducer<T>>();
+            foreach (var process in serviceProvider.GetRequiredService<IEnumerable<IBackgroundProcess>>())
+            {
+                await process.StartAsync(default);
+            }
+
+            var producer = serviceProvider.GetRequiredService<IMessageBus>();
 
             return (new Cleanup(serviceProvider), producer);
         }
@@ -67,6 +87,72 @@ namespace Squidex.Messaging
         }
 
         [Fact]
+        public async Task Should_throw_exception_if_no_route_not_valid()
+        {
+            var messageChannel = Guid.NewGuid().ToString();
+
+            var consumer = new DelegatingHandler<Message>(message =>
+            {
+                return Task.CompletedTask;
+            });
+
+            var (app, bus) = await CreateMessagingAsync(messageChannel, consumer, DateTime.UtcNow, options =>
+            {
+                options.Routing.Clear();
+                options.Routing.AddFallback("invalid");
+            });
+
+            await using (app)
+            {
+                await Assert.ThrowsAnyAsync<Exception>(() => bus.PublishAsync(213));
+            }
+        }
+
+        [Fact]
+        public async Task Should_throw_exception_if_no_route_found()
+        {
+            var messageChannel = Guid.NewGuid().ToString();
+
+            var consumer = new DelegatingHandler<Message>(message =>
+            {
+                return Task.CompletedTask;
+            });
+
+            var (app, bus) = await CreateMessagingAsync(messageChannel, consumer, DateTime.UtcNow, options =>
+            {
+                options.Routing.Clear();
+            });
+
+            await using (app)
+            {
+                await Assert.ThrowsAnyAsync<Exception>(() => bus.PublishAsync(213));
+            }
+        }
+
+        [Fact]
+        public async Task Should_throw_exception_if_no_channel_found()
+        {
+            var messageChannel = Guid.NewGuid().ToString();
+
+            var consumer = new DelegatingHandler<Message>(message =>
+            {
+                return Task.CompletedTask;
+            });
+
+            var (app, bus) = await CreateMessagingAsync(messageChannel, consumer, DateTime.UtcNow, options =>
+            {
+                options.Routing.Clear();
+            });
+
+            await using (app)
+            {
+                var message = new Message { Value = 1 };
+
+                await Assert.ThrowsAnyAsync<Exception>(() => bus.PublishToChannelAsync(message, "invalid"));
+            }
+        }
+
+        [Fact]
         public async Task Should_consume_base_classes()
         {
             var tcs = new TaskCompletionSource<bool>();
@@ -75,9 +161,9 @@ namespace Squidex.Messaging
             var messagesSent = Enumerable.Range(0, 20).ToList();
             var messagesReceives = new ConcurrentBag<int>();
 
-            var consumer = new DelegatingHandler<BaseMessage>(message =>
+            var consumer = new DelegatingHandler<Message>(message =>
             {
-                messagesReceives.Add(((Message)message).Value);
+                messagesReceives.Add(message.Value);
 
                 if (messagesSent.Count == messagesReceives.Count)
                 {
@@ -87,24 +173,20 @@ namespace Squidex.Messaging
                 return Task.CompletedTask;
             });
 
-            var (cleaner, producer) = await CreateMessagingAsync(messageChannel, consumer, DateTime.UtcNow);
+            var (app, bus) = await CreateMessagingAsync(messageChannel, consumer, DateTime.UtcNow);
 
-            try
+            await using (app)
             {
                 foreach (var message in messagesSent)
                 {
                     var key = message.ToString(CultureInfo.InvariantCulture);
 
-                    await producer.ProduceAsync(new Message { Value = message }, key);
+                    await bus.PublishAsync(new Message { Value = message } as BaseMessage, key);
                 }
 
                 await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromSeconds(30)));
 
                 Assert.Equal(messagesSent, messagesReceives.OrderBy(x => x).ToList());
-            }
-            finally
-            {
-                await cleaner.DisposeAsync();
             }
         }
 
@@ -132,22 +214,22 @@ namespace Squidex.Messaging
                 return Task.CompletedTask;
             });
 
-            var systems = new List<(IAsyncDisposable Cleaner, IMessageProducer<Message> Producer)>();
+            var apps = new List<(IAsyncDisposable App, IMessageBus Bus)>();
 
             for (var i = 0; i < numConsumers; i++)
             {
-                systems.Add(await CreateMessagingAsync(messageChannel, consumer, DateTime.UtcNow));
+                apps.Add(await CreateMessagingAsync(messageChannel, consumer, DateTime.UtcNow));
             }
 
             try
             {
-                var producer = systems[0].Producer;
+                var bus = apps[0].Bus;
 
                 foreach (var message in messagesSent)
                 {
                     var key = message.ToString(CultureInfo.InvariantCulture);
 
-                    await producer.ProduceAsync(new Message { Value = message }, key);
+                    await bus.PublishAsync(new Message { Value = message }, key);
                 }
 
                 await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromSeconds(30)));
@@ -156,7 +238,7 @@ namespace Squidex.Messaging
             }
             finally
             {
-                foreach (var (cleaner, _) in systems)
+                foreach (var (cleaner, _) in apps)
                 {
                     await cleaner.DisposeAsync();
                 }
@@ -177,19 +259,16 @@ namespace Squidex.Messaging
                 return Task.Delay(TimeSpan.FromDays(30));
             });
 
-            var (cleaner1, producer1) = await CreateMessagingAsync(messageChannel, consumer1, DateTime.UtcNow);
-            try
+            var (app1, bus1) = await CreateMessagingAsync(messageChannel, consumer1, DateTime.UtcNow);
+
+            await using (app1)
             {
                 foreach (var message in messagesSent)
                 {
                     var key = message.ToString(CultureInfo.InvariantCulture);
 
-                    await producer1.ProduceAsync(new Message { Value = message }, key);
+                    await bus1.PublishAsync(new Message { Value = message }, key);
                 }
-            }
-            finally
-            {
-                await cleaner1.DisposeAsync();
             }
 
             var consumer2 = new DelegatingHandler<Message>(message =>
@@ -204,16 +283,13 @@ namespace Squidex.Messaging
                 return Task.CompletedTask;
             });
 
-            var (cleaner2, _) = await CreateMessagingAsync(messageChannel, consumer2, DateTime.UtcNow.AddHours(1));
-            try
+            var (app2, _) = await CreateMessagingAsync(messageChannel, consumer2, DateTime.UtcNow.AddHours(1));
+
+            await using (app2)
             {
                 await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromSeconds(30)));
 
                 Assert.Equal(messagesSent, messagesReceives.OrderBy(x => x).ToList());
-            }
-            finally
-            {
-                await cleaner2.DisposeAsync();
             }
         }
     }

@@ -7,6 +7,7 @@
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Squidex.Hosting;
 using Squidex.Messaging;
 using Squidex.Messaging.Implementation;
 using Squidex.Messaging.Implementation.MongoDB;
@@ -43,26 +44,64 @@ namespace Microsoft.Extensions.DependencyInjection
             return services;
         }
 
-        public static IServiceCollection AddMessaging<T>(this IServiceCollection services, string channelName, Action<MessagingOptions<T>>? configure = null)
+        public static IServiceCollection AddMessaging(this IServiceCollection services, Action<MessagingOptions>? configure = null)
         {
-            services.Configure<MessagingOptions<T>>(options =>
+            services.Configure<MessagingOptions>(options =>
             {
                 configure?.Invoke(options);
-
-                options.ChannelName = channelName;
             });
 
             services.TryAddSingleton<ITransportSerializer,
                 NewtonsoftJsonTransportSerializer>();
 
+            services.TryAddSingleton<IMessageBus,
+                DefaultMessageBus>();
+
             services.TryAddSingleton<IClock,
                 DefaultClock>();
 
-            services.AddSingletonAs<DelegatingProducer<T>>()
-                .As<IMessageProducer<T>>();
+            services.TryAddSingleton<
+                HandlerPipeline>();
 
-            services.AddSingletonAs<DelegatingConsumer<T>>()
-                .AsSelf();
+            return services;
+        }
+
+        public static IServiceCollection AddMessaging(this IServiceCollection services, string channelName, Action<ChannelOptions>? configure = null)
+        {
+            services.Configure<ChannelOptions>(channelName, options =>
+            {
+                configure?.Invoke(options);
+            });
+
+            DelegatingProducer FindProducer(IServiceProvider sp)
+            {
+                return sp.GetRequiredService<IEnumerable<DelegatingProducer>>().Single(x => x.ChannelName == channelName);
+            }
+
+            DelegatingConsumer FindConsumer(IServiceProvider sp)
+            {
+                return sp.GetRequiredService<IEnumerable<DelegatingConsumer>>().Single(x => x.ChannelName == channelName);
+            }
+
+            AddMessaging(services);
+
+            services.AddSingleton(
+                sp => ActivatorUtilities.CreateInstance<DelegatingProducer>(sp, channelName));
+
+            services.AddSingleton(
+                sp => ActivatorUtilities.CreateInstance<DelegatingConsumer>(sp, channelName));
+
+            services.AddSingleton<IInternalMessageProducer>(
+                FindProducer);
+
+            services.AddSingleton<IInitializable>(
+                FindProducer);
+
+            services.AddSingleton<IInitializable>(
+                FindConsumer);
+
+            services.AddSingleton<IBackgroundProcess>(
+                FindConsumer);
 
             return services;
         }

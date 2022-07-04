@@ -5,20 +5,10 @@
 //  All rights reserved. Licensed under the MIT license.
 // ==========================================================================
 
-#pragma warning disable RECS0096 // Type parameter is never used
-
 namespace Squidex.Messaging
 {
-    public sealed class MessagingOptions<T>
+    public sealed class MessagingOptions
     {
-        public string ChannelName { get; set; }
-
-        public int NumSubscriptions { get; set; } = 1;
-
-        public int NumWorkers { get; set; } = 1;
-
-        public TimeSpan Timeout { get; set; } = TimeSpan.FromMinutes(30);
-
-        public TimeSpan Expires { get; set; } = TimeSpan.FromHours(1);
+        public RoutingCollection Routing { get; set; } = new RoutingCollection();
     }
 }

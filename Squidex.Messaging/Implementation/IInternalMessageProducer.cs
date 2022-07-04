@@ -5,15 +5,15 @@
 //  All rights reserved. Licensed under the MIT license.
 // ==========================================================================
 
-namespace Squidex.Messaging
-{
-    public interface IMessageHandler<in T> : IMessageHandler
-    {
-        Task HandleAsync(T message,
-            CancellationToken ct = default);
-    }
+using Squidex.Hosting;
 
-    public interface IMessageHandler
+namespace Squidex.Messaging.Implementation
+{
+    public interface IInternalMessageProducer : IInitializable
     {
+        string ChannelName { get; }
+
+        Task ProduceAsync(object message, string? key = null,
+            CancellationToken ct = default);
     }
 }

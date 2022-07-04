@@ -5,7 +5,6 @@
 //  All rights reserved. Licensed under the MIT license.
 // ==========================================================================
 
-using Squidex.Messaging.Implementation;
 using Xunit;
 
 #pragma warning disable SA1300 // Element should begin with upper-case letter
@@ -21,22 +20,15 @@ namespace Squidex.Messaging
             _ = fixture;
         }
 
-        protected override IServiceProvider CreateServices<T>(string channelName, IMessageHandler<T> handler, IClock clock)
+        protected override void ConfigureServices(IServiceCollection services, string channelName)
         {
-            var services =
-                new ServiceCollection()
-                    .AddSingleton(_.Database)
-                    .AddLogging()
-                    .AddSingleton(clock)
-                    .AddSingleton(handler)
-                    .AddMongoDbTransport(TestHelpers.Configuration, x => x.Prefetch = 5)
-                    .AddMessaging<T>(channelName, options =>
-                    {
-                        options.Expires = TimeSpan.FromDays(1);
-                    })
-                    .BuildServiceProvider();
-
-            return services;
+            services
+                .AddSingleton(_.Database)
+                .AddMongoDbTransport(TestHelpers.Configuration, x => x.Prefetch = 5)
+                .AddMessaging(channelName, options =>
+                {
+                    options.Expires = TimeSpan.FromDays(1);
+                });
         }
     }
 }
