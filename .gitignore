@@ -1,0 +1,34 @@
+# User-specific files
+*.suo
+*.user
+*.vs
+*.log
+
+.awCache
+
+.vscode
+.awcache
+
+# Build results
+bin/
+build/
+obj/
+out/
+publish/
+uploads/
+
+# Test Output
+_test-output/
+
+# NodeJS 
+node_modules/
+
+/backend/src/Squidex/Assets
+
+appsettings.Development.json
+appsettings.Production.json
+launchSettings.json
+
+/frontend/app-config/localhost-key.pem
+/frontend/app-config/localhost.pem
+.idea

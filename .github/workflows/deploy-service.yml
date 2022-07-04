@@ -1,0 +1,69 @@
+name: Build and Push to Dockerhub
+
+on:
+  push:
+    branches:
+    - master
+  pull_request:
+    branches:
+    - master
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Calculate Version
+      env:
+        BUILD_NUMBER: ${{ github.run_number }}
+      run: |
+        echo "BUILD_NUMBER=$(($BUILD_NUMBER + 0))" >> $GITHUB_ENV
+  
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v1
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v1
+
+    - name: Cache Docker layers
+      uses: actions/cache@v2
+      with:
+        path: /tmp/.buildx-cache
+        key: ${{ runner.os }}-buildx-${{ github.sha }}
+        restore-keys: |
+          ${{ runner.os }}-buildx-
+    
+    - name: Login to Docker
+      if: github.event_name != 'pull_request'
+      uses: docker/login-action@v1 
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    - name: BUILD
+      id: docker_build
+      uses: docker/build-push-action@v2
+      with:
+        push: false
+        load: true
+        cache-from: type=local,src=/tmp/.buildx-cache
+        cache-to: type=local,dest=/tmp/.buildx-cache-new
+        tags: resizer-temp
+
+    - name: Move cache
+      run: |
+        rm -rf /tmp/.buildx-cache
+        mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+
+    - name: Rename Tags
+      if: github.event_name != 'pull_request'
+      run: |
+        docker tag resizer-temp squidex/resizer:dev-latest
+        docker tag resizer-temp squidex/resizer:dev-${{ env.BUILD_NUMBER }}
+
+    - name: Push Tags
+      if: github.event_name != 'pull_request'
+      run: |
+        docker push squidex/resizer:dev-latest
+        docker push squidex/resizer:dev-${{ env.BUILD_NUMBER }}
+
+
