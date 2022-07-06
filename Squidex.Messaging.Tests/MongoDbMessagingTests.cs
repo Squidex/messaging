@@ -25,7 +25,7 @@ namespace Squidex.Messaging
             services
                 .AddSingleton(_.Database)
                 .AddMongoDbTransport(TestHelpers.Configuration)
-                .AddMessaging(channelName, options =>
+                .AddMessaging(channelName, true, options =>
                 {
                     options.Expires = TimeSpan.FromDays(1);
                 });

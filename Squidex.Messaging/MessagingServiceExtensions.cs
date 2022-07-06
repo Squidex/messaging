@@ -66,7 +66,7 @@ namespace Microsoft.Extensions.DependencyInjection
             return services;
         }
 
-        public static IServiceCollection AddMessaging(this IServiceCollection services, string channelName, Action<ChannelOptions>? configure = null)
+        public static IServiceCollection AddMessaging(this IServiceCollection services, string channelName, bool consume, Action<ChannelOptions>? configure = null)
         {
             services.Configure<ChannelOptions>(channelName, options =>
             {
@@ -88,20 +88,23 @@ namespace Microsoft.Extensions.DependencyInjection
             services.AddSingleton(
                 sp => ActivatorUtilities.CreateInstance<DelegatingProducer>(sp, channelName));
 
-            services.AddSingleton(
-                sp => ActivatorUtilities.CreateInstance<DelegatingConsumer>(sp, channelName));
-
             services.AddSingleton<IInternalMessageProducer>(
                 FindProducer);
 
             services.AddSingleton<IInitializable>(
                 FindProducer);
 
-            services.AddSingleton<IInitializable>(
-                FindConsumer);
+            if (consume)
+            {
+                services.AddSingleton(
+                    sp => ActivatorUtilities.CreateInstance<DelegatingConsumer>(sp, channelName));
 
-            services.AddSingleton<IBackgroundProcess>(
-                FindConsumer);
+                services.AddSingleton<IInitializable>(
+                    FindConsumer);
+
+                services.AddSingleton<IBackgroundProcess>(
+                    FindConsumer);
+            }
 
             return services;
         }
