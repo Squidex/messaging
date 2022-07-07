@@ -11,23 +11,26 @@ using Grpc.Core;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Squidex.Messaging.Internal;
+using GooglePushConfig = Google.Cloud.PubSub.V1.PushConfig;
 
 namespace Squidex.Messaging.Implementation.GooglePubSub
 {
     public sealed class GooglePubSubTransport : ITransport
     {
         private readonly GooglePubSubTransportOptions options;
+        private readonly GooglePushConfig pushConfig = new GooglePushConfig();
         private readonly ILogger<GooglePubSubTransport> log;
         private readonly string topicId;
         private PublisherClient? publisherClient;
-        private bool autoAck;
 
         public GooglePubSubTransport(string channelName,
-            IOptions<GooglePubSubTransportOptions> options, ILogger<GooglePubSubTransport> log)
+            IOptions<GooglePubSubTransportOptions> options,
+            ILogger<GooglePubSubTransport> log)
         {
-            this.log = log;
             this.options = options.Value;
-            this.topicId = $"{options.Value.Prefix}{channelName}";
+            this.log = log;
+
+            topicId = $"{options.Value.Prefix}{channelName}";
         }
 
         public async Task InitializeAsync(ChannelOptions channelOptions,
@@ -45,28 +48,23 @@ namespace Squidex.Messaging.Implementation.GooglePubSub
             {
                 await topicClient.CreateTopicAsync(topicName, ct);
             }
-            catch (RpcException ex) when (ex.Status.StatusCode != StatusCode.AlreadyExists)
+            catch (RpcException ex) when (ex.Status.StatusCode == StatusCode.AlreadyExists)
             {
-                throw;
+                // This exception is expected.
             }
 
             var subcriptionName = new SubscriptionName(options.ProjectId, topicId);
             var subscriberClient = await SubscriberServiceApiClient.CreateAsync(ct);
 
-            var timeoutInSec = (int)channelOptions.Timeout.TotalSeconds;
-
-            if (timeoutInSec > 600)
-            {
-                autoAck = true;
-            }
+            var timeoutInSec = (int)Math.Min(channelOptions.Timeout.TotalSeconds, 600);
 
             try
             {
-                await subscriberClient.CreateSubscriptionAsync(subcriptionName, topicName, new PushConfig(), autoAck ? 0 : timeoutInSec, ct);
+                await subscriberClient.CreateSubscriptionAsync(subcriptionName, topicName, pushConfig, timeoutInSec, ct);
             }
-            catch (RpcException ex) when (ex.Status.StatusCode != StatusCode.AlreadyExists)
+            catch (RpcException ex) when (ex.Status.StatusCode == StatusCode.AlreadyExists)
             {
-                throw;
+                // This exception is expected.
             }
 
             publisherClient = await PublisherClient.CreateAsync(topicName);
@@ -90,11 +88,11 @@ namespace Squidex.Messaging.Implementation.GooglePubSub
         }
 
         public async Task ProduceAsync(TransportMessage transportMessage,
-            CancellationToken ct = default)
+            CancellationToken ct)
         {
             if (publisherClient == null)
             {
-                ThrowHelper.InvalidOperationException("Transport not initialized yet.");
+                ThrowHelper.InvalidOperationException("Transport has not been initialized yet.");
                 return;
             }
 
@@ -112,7 +110,7 @@ namespace Squidex.Messaging.Implementation.GooglePubSub
         }
 
         public async Task<IAsyncDisposable> SubscribeAsync(MessageTransportCallback callback,
-            CancellationToken ct = default)
+            CancellationToken ct)
         {
             var subcriptionName = new SubscriptionName(options.ProjectId, topicId);
             var subscriberClient = await SubscriberClient.CreateAsync(subcriptionName);

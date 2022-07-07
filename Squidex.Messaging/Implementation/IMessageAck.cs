@@ -10,9 +10,9 @@ namespace Squidex.Messaging.Implementation
     public interface IMessageAck
     {
         Task OnSuccessAsync(TransportResult result,
-            CancellationToken ct = default);
+            CancellationToken ct);
 
         Task OnErrorAsync(TransportResult result,
-            CancellationToken ct = default);
+            CancellationToken ct);
     }
 }

@@ -104,11 +104,11 @@ namespace Squidex.Messaging.Implementation.MongoDb
         }
 
         public Task ProduceAsync(TransportMessage transportMessage,
-            CancellationToken ct = default)
+            CancellationToken ct)
         {
             var request = new MongoDbMessage
             {
-                Id = transportMessage.Headers[Headers.Id],
+                Id = transportMessage.Headers[HeaderNames.Id],
                 MessageData = transportMessage.Data,
                 MessageHeaders = transportMessage.Headers,
                 TimeToLive = GetTimeToLive(transportMessage.Headers),
@@ -121,7 +121,7 @@ namespace Squidex.Messaging.Implementation.MongoDb
         {
             var time = TimeSpan.FromDays(30);
 
-            if (headers.TryGetTimestamp(Headers.TimeExpires, out var expires))
+            if (headers.TryGetTimestamp(HeaderNames.TimeExpires, out var expires))
             {
                 time = expires;
             }
@@ -129,9 +129,10 @@ namespace Squidex.Messaging.Implementation.MongoDb
             return clock.UtcNow + time;
         }
 
-        public Task<IAsyncDisposable> SubscribeAsync(MessageTransportCallback callback, CancellationToken ct = default)
+        public Task<IAsyncDisposable> SubscribeAsync(MessageTransportCallback callback,
+            CancellationToken ct)
         {
-            var subscription = new MongoDbSubscription(callback, collection, options, clock, log);
+            var subscription = new MongoDbSubscription(channelName, callback, collection, options, clock, log);
 
             return Task.FromResult<IAsyncDisposable>(subscription);
         }

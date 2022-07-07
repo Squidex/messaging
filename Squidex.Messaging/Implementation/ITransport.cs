@@ -21,10 +21,10 @@ namespace Squidex.Messaging.Implementation
             CancellationToken ct);
 
         Task<IAsyncDisposable> SubscribeAsync(MessageTransportCallback callback,
-            CancellationToken ct = default);
+            CancellationToken ct);
 
         Task ProduceAsync(TransportMessage transportMessage,
-            CancellationToken ct = default);
+            CancellationToken ct);
 
         void CleanupOldEntries(TimeSpan timeout, TimeSpan expires);
     }

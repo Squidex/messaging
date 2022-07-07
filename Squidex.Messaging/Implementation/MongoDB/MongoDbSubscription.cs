@@ -13,15 +13,17 @@ namespace Squidex.Messaging.Implementation.MongoDb
     internal sealed class MongoDbSubscription : IAsyncDisposable, IMessageAck
     {
         private static readonly UpdateDefinitionBuilder<MongoDbMessage> Update = Builders<MongoDbMessage>.Update;
+        private readonly string channelName;
         private readonly IMongoCollection<MongoDbMessage> collection;
         private readonly MongoDbTransportOptions options;
         private readonly IClock clock;
         private readonly ILogger log;
         private readonly SimpleTimer timer;
 
-        public MongoDbSubscription(MessageTransportCallback callback, IMongoCollection<MongoDbMessage> collection,
+        public MongoDbSubscription(string channelName, MessageTransportCallback callback, IMongoCollection<MongoDbMessage> collection,
             MongoDbTransportOptions options, IClock clock, ILogger log)
         {
+            this.channelName = channelName;
             this.collection = collection;
             this.options = options;
             this.clock = clock;
@@ -136,9 +138,14 @@ namespace Squidex.Messaging.Implementation.MongoDb
         }
 
         public async Task OnErrorAsync(TransportResult result,
-            CancellationToken ct = default)
+            CancellationToken ct)
         {
-            if (timer.IsDisposed || result.Data is not string id)
+            if (timer.IsDisposed)
+            {
+                return;
+            }
+
+            if (result.Data is not string id)
             {
                 log.LogWarning("Transport message has no MongoDb ID.");
                 return;
@@ -150,14 +157,19 @@ namespace Squidex.Messaging.Implementation.MongoDb
             }
             catch (Exception ex)
             {
-                log.LogError(ex, "Failed to put the message back into the queue.");
+                log.LogError(ex, "Failed to put the message back into the queue '{queue}'.", channelName);
             }
         }
 
         public async Task OnSuccessAsync(TransportResult result,
-            CancellationToken ct = default)
+            CancellationToken ct)
         {
-            if (timer.IsDisposed || result.Data is not string id)
+            if (timer.IsDisposed)
+            {
+                return;
+            }
+
+            if (result.Data is not string id)
             {
                 log.LogWarning("Transport message has no MongoDb ID.");
                 return;
@@ -169,7 +181,7 @@ namespace Squidex.Messaging.Implementation.MongoDb
             }
             catch (Exception ex)
             {
-                log.LogError(ex, "Failed to remove message from queue.");
+                log.LogError(ex, "Failed to remove message from queue '{queue}'.", channelName);
             }
         }
     }

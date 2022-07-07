@@ -22,7 +22,7 @@ namespace Squidex.Messaging.Implementation.Kafka
         public KafkaTransportOptions Options { get; }
 
         public KafkaTransportFactory(IServiceProvider serviceProvider,
-            IOptions<KafkaTransportOptions> options, ILogger log)
+            IOptions<KafkaTransportOptions> options, ILogger<KafkaTransport> log)
         {
             Options = options.Value;
 

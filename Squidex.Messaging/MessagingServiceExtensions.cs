@@ -13,6 +13,7 @@ using Squidex.Messaging.Implementation;
 using Squidex.Messaging.Implementation.GooglePubSub;
 using Squidex.Messaging.Implementation.Kafka;
 using Squidex.Messaging.Implementation.MongoDb;
+using Squidex.Messaging.Implementation.RabbitMq;
 
 namespace Microsoft.Extensions.DependencyInjection
 {
@@ -37,6 +38,10 @@ namespace Microsoft.Extensions.DependencyInjection
                 ["Kafka"] = () =>
                 {
                     services.AddKafkaTransport(config);
+                },
+                ["RabbitMq"] = () =>
+                {
+                    services.AddRabbitMqTransport(config);
                 }
             });
 
@@ -83,6 +88,21 @@ namespace Microsoft.Extensions.DependencyInjection
             }
 
             services.AddSingletonAs<KafkaTransportFactory>()
+                .As<ITransportFactory>().AsSelf();
+
+            return services;
+        }
+
+        public static IServiceCollection AddRabbitMqTransport(this IServiceCollection services, IConfiguration config, Action<RabbitMqTransportOptions>? configure = null)
+        {
+            services.Configure<RabbitMqTransportOptions>(config, "messaging:rabbitMq");
+
+            if (configure != null)
+            {
+                services.Configure(configure);
+            }
+
+            services.AddSingletonAs<RabbitMqTransportFactory>()
                 .As<ITransportFactory>().AsSelf();
 
             return services;

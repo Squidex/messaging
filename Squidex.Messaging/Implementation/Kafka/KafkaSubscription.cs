@@ -11,14 +11,14 @@ using Microsoft.Extensions.Logging;
 
 namespace Squidex.Messaging.Implementation.Kafka
 {
-    public sealed class KafkaSubscription : IAsyncDisposable, IMessageAck
+    public sealed class KafkaSubscription : IMessageAck, IAsyncDisposable
     {
-        private readonly ILogger log;
-        private readonly CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
+        private readonly CancellationTokenSource stopToken = new CancellationTokenSource();
         private readonly Thread consumerThread;
         private readonly IConsumer<string, byte[]> consumer;
+        private readonly ILogger log;
 
-        public KafkaSubscription(KafkaTransportFactory factory, string channelName, MessageTransportCallback callback,
+        public KafkaSubscription(string channelName, MessageTransportCallback callback, KafkaTransportFactory factory,
             ILogger log)
         {
             this.log = log;
@@ -46,9 +46,9 @@ namespace Squidex.Messaging.Implementation.Kafka
 
                     try
                     {
-                        while (!cancellationTokenSource.IsCancellationRequested)
+                        while (!stopToken.IsCancellationRequested)
                         {
-                            var result = consumer.Consume(cancellationTokenSource.Token);
+                            var result = consumer.Consume(stopToken.Token);
 
                             var headers = new TransportHeaders();
 
@@ -60,7 +60,7 @@ namespace Squidex.Messaging.Implementation.Kafka
                             var transportMessage = new TransportMessage(result.Message.Value, result.Message.Key, headers);
                             var transportResult = new TransportResult(transportMessage, result);
 
-                            callback(transportResult, this, cancellationTokenSource.Token).Wait(cancellationTokenSource.Token);
+                            callback(transportResult, this, stopToken.Token).Wait(stopToken.Token);
                         }
                     }
                     finally
@@ -82,26 +82,32 @@ namespace Squidex.Messaging.Implementation.Kafka
         {
             try
             {
-                cancellationTokenSource.Cancel();
+                stopToken.Cancel();
+
                 consumerThread.Join(1500);
             }
             catch (Exception ex)
             {
                 log.LogError(ex, "Kafka shutdown failed.");
             }
+            finally
+            {
+                consumer.Close();
+                consumer.Dispose();
+            }
 
             return default;
         }
 
         public Task OnErrorAsync(TransportResult result,
-            CancellationToken ct = default)
+            CancellationToken ct)
         {
             Commit(result);
             return Task.CompletedTask;
         }
 
         public Task OnSuccessAsync(TransportResult result,
-            CancellationToken ct = default)
+            CancellationToken ct)
         {
             Commit(result);
             return Task.CompletedTask;
@@ -109,7 +115,12 @@ namespace Squidex.Messaging.Implementation.Kafka
 
         private void Commit(TransportResult result)
         {
-            if (cancellationTokenSource.IsCancellationRequested || result.Data is not ConsumeResult<string, byte[]> consumeResult)
+            if (stopToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            if (result.Data is not ConsumeResult<string, byte[]> consumeResult)
             {
                 log.LogWarning("Transport message has no consume result.");
                 return;

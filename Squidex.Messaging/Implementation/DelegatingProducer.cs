@@ -66,11 +66,11 @@ namespace Squidex.Messaging.Implementation
                 }
 
                 var headers = new TransportHeaders()
-                    .Set(Headers.Id, Guid.NewGuid())
-                    .Set(Headers.Type, message?.GetType().AssemblyQualifiedName ?? "null")
-                    .Set(Headers.TimeExpires, channelOptions.Expires)
-                    .Set(Headers.TimeTimeout, channelOptions.Timeout)
-                    .Set(Headers.TimeCreated, clock.UtcNow);
+                    .Set(HeaderNames.Id, Guid.NewGuid())
+                    .Set(HeaderNames.Type, message?.GetType().AssemblyQualifiedName ?? "null")
+                    .Set(HeaderNames.TimeExpires, channelOptions.Expires)
+                    .Set(HeaderNames.TimeTimeout, channelOptions.Timeout)
+                    .Set(HeaderNames.TimeCreated, clock.UtcNow);
 
                 var transportMessage = new TransportMessage(data, key, headers);
 

@@ -11,8 +11,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Squidex.Hosting;
 
-#pragma warning disable CA2016 // Forward the 'CancellationToken' parameter to methods
-#pragma warning disable MA0040 // Flow the cancellation token
 #pragma warning disable SA1313 // Parameter names should begin with lower-case letter
 #pragma warning disable RECS0082 // Parameter has the same name as a member and hides it
 
@@ -31,7 +29,7 @@ namespace Squidex.Messaging.Implementation
         private readonly ILogger<DelegatingConsumer> log;
         private bool isReleased;
 
-        sealed record ScheduledMessage(object Message, TransportResult Result, IMessageAck Ack);
+        sealed record ScheduledMessage(Type Type, TransportResult Result, IMessageAck Ack);
 
         public string Name => activity;
 
@@ -57,7 +55,7 @@ namespace Squidex.Messaging.Implementation
             this.serializer = serializer;
             this.log = log;
 
-            worker = new ActionBlock<ScheduledMessage>(OnSerializedMessage, new ExecutionDataflowBlockOptions
+            worker = new ActionBlock<ScheduledMessage>(OnScheduledMessage, new ExecutionDataflowBlockOptions
             {
                 MaxMessagesPerTask = 1,
                 MaxDegreeOfParallelism = this.channelOptions.NumWorkers,
@@ -92,12 +90,28 @@ namespace Squidex.Messaging.Implementation
         {
             isReleased = true;
 
+            foreach (var subscription in subscriptions)
+            {
+                await subscription.DisposeAsync();
+            }
+
             await transport.ReleaseAsync(ct);
         }
 
-        private async Task OnSerializedMessage(ScheduledMessage input)
+        private async Task OnScheduledMessage(ScheduledMessage input)
         {
-            var (message, transportMessage, ack) = input;
+            var (type, transportResult, ack) = input;
+
+            object message;
+            try
+            {
+                message = serializer.Deserialize(transportResult.Message.Data, type);
+            }
+            catch (Exception ex)
+            {
+                log.LogError(ex, "Failed to deserialize message with type {type}.", type);
+                return;
+            }
 
             try
             {
@@ -132,7 +146,7 @@ namespace Squidex.Messaging.Implementation
                 if (!isReleased)
                 {
                     // Ignore cancellation, better to delete the message, even if cancelled.
-                    await ack.OnSuccessAsync(transportMessage);
+                    await ack.OnSuccessAsync(transportResult, default);
                 }
             }
         }
@@ -147,7 +161,7 @@ namespace Squidex.Messaging.Implementation
 
             using (var trace = MessagingTelemetry.Activities.StartActivity(activity))
             {
-                transportResult.Message.Headers.TryGetDateTime(Headers.TimeCreated, out var created);
+                transportResult.Message.Headers.TryGetDateTime(HeaderNames.TimeCreated, out var created);
 
                 if (created != default && trace?.Id != null)
                 {
@@ -155,11 +169,12 @@ namespace Squidex.Messaging.Implementation
                         startTime: created)?.Stop();
                 }
 
-                var typeString = transportResult.Message.Headers?.GetValueOrDefault(Headers.Type) ?? string.Empty;
+                var typeString = transportResult.Message.Headers?.GetValueOrDefault(HeaderNames.Type) ?? string.Empty;
 
                 if (string.IsNullOrWhiteSpace(typeString))
                 {
-                    await ack.OnSuccessAsync(transportResult);
+                    // The message is broken, we cannot handle it, even if we would retry.
+                    await ack.OnSuccessAsync(transportResult, default);
 
                     log.LogWarning("Message has no type header.");
                     return;
@@ -175,15 +190,14 @@ namespace Squidex.Messaging.Implementation
 
                 if (type == null)
                 {
-                    await ack.OnSuccessAsync(transportResult);
+                    // The message is broken, we cannot handle it, even if we would retry.
+                    await ack.OnSuccessAsync(transportResult, default);
 
                     log.LogWarning("Message has invalid or unknown type {type}.", typeString);
                     return;
                 }
 
-                var message = serializer.Deserialize(transportResult.Message.Data, type);
-
-                await worker.SendAsync(new ScheduledMessage(message, transportResult, ack), ct);
+                await worker.SendAsync(new ScheduledMessage(type, transportResult, ack), ct);
             }
         }
     }

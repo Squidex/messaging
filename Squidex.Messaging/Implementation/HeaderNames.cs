@@ -7,7 +7,7 @@
 
 namespace Squidex.Messaging.Implementation
 {
-    public static class Headers
+    public static class HeaderNames
     {
         public const string Id = "messaging.id";
 

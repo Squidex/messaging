@@ -54,31 +54,41 @@ namespace Squidex.Messaging.Implementation.Kafka
         }
 
         public async Task ProduceAsync(TransportMessage transportMessage,
-            CancellationToken ct = default)
+            CancellationToken ct)
         {
             if (producer == null)
             {
-                ThrowHelper.InvalidOperationException("Transport not initialized yet.");
+                ThrowHelper.InvalidOperationException("Transport has not been initialized yet.");
                 return;
             }
 
-            var messageKey = transportMessage.Key;
-
-            if (string.IsNullOrWhiteSpace(messageKey))
+            var message = new Message<string, byte[]>
             {
-                messageKey = Guid.NewGuid().ToString();
+                Value = transportMessage.Data
+            };
+
+            if (transportMessage.Headers.Count > 0)
+            {
+                message.Headers = new Headers();
+
+                foreach (var (key, value) in transportMessage.Headers)
+                {
+                    message.Headers.Add(key, Encoding.UTF8.GetBytes(value));
+                }
             }
 
-            var message = new Message<string, byte[]> { Value = transportMessage.Data, Key = messageKey };
-
-            foreach (var (key, value) in transportMessage.Headers)
+            if (string.IsNullOrWhiteSpace(transportMessage.Key))
             {
-                message.Headers.Add(key, Encoding.UTF8.GetBytes(value));
+                message.Key = Guid.NewGuid().ToString();
+            }
+            else
+            {
+                message.Key = transportMessage.Key;
             }
 
             try
             {
-                producer.Produce(channelName, message);
+                await producer.ProduceAsync(channelName, message, ct);
             }
             catch (ProduceException<string, byte[]> ex) when (ex.Error.Code == ErrorCode.Local_QueueFull)
             {
@@ -101,9 +111,9 @@ namespace Squidex.Messaging.Implementation.Kafka
         }
 
         public Task<IAsyncDisposable> SubscribeAsync(MessageTransportCallback callback,
-            CancellationToken ct = default)
+            CancellationToken ct)
         {
-            var subscription = new KafkaSubscription(factory, channelName, callback, log);
+            var subscription = new KafkaSubscription(channelName, callback, factory, log);
 
             return Task.FromResult<IAsyncDisposable>(subscription);
         }

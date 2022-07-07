@@ -15,7 +15,8 @@ namespace Squidex.Messaging.Implementation.GooglePubSub
     {
         private readonly SubscriberClient subscriberClient;
 
-        public GooglePubSubSubscription(SubscriberClient subscriberClient, MessageTransportCallback callback, ILogger log)
+        public GooglePubSubSubscription(SubscriberClient subscriberClient, MessageTransportCallback callback,
+            ILogger log)
         {
             this.subscriberClient = subscriberClient;
 
@@ -45,7 +46,7 @@ namespace Squidex.Messaging.Implementation.GooglePubSub
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                log.LogError(ex, "Failed to consume message.");
+                log.LogError(ex, "Failed to consume message from subscription '{subscription}'.", subscriberClient.SubscriptionName.SubscriptionId);
             }
         }
 
@@ -55,13 +56,13 @@ namespace Squidex.Messaging.Implementation.GooglePubSub
         }
 
         public Task OnErrorAsync(TransportResult result,
-            CancellationToken ct = default)
+            CancellationToken ct)
         {
             return Task.CompletedTask;
         }
 
         public Task OnSuccessAsync(TransportResult result,
-            CancellationToken ct = default)
+            CancellationToken ct)
         {
             return Task.CompletedTask;
         }
