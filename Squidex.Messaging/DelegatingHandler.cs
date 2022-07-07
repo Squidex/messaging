@@ -28,7 +28,7 @@ namespace Squidex.Messaging
         }
 
         public Task HandleAsync(T message,
-            CancellationToken ct = default)
+            CancellationToken ct)
         {
             return action(message, ct);
         }

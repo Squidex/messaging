@@ -7,15 +7,15 @@
 
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Squidex.Messaging.Implementation.MongoDb
+namespace Squidex.Messaging.Implementation.GooglePubSub
 {
-    public sealed class MongoDbTransportFactory : ITransportFactory
+    public sealed class GooglePubSubTransportFactory : ITransportFactory
     {
         private readonly Func<string, ITransport> factory;
 
-        public MongoDbTransportFactory(IServiceProvider serviceProvider)
+        public GooglePubSubTransportFactory(IServiceProvider serviceProvider)
         {
-            var objectFactory = ActivatorUtilities.CreateFactory(typeof(MongoDbTransport), new[] { typeof(string) });
+            var objectFactory = ActivatorUtilities.CreateFactory(typeof(GooglePubSubTransport), new[] { typeof(string) });
 
             factory = name =>
             {

@@ -12,6 +12,8 @@
   </ItemGroup>
   
   <ItemGroup>
+    <PackageReference Include="Confluent.Kafka" Version="1.8.2" />
+    <PackageReference Include="Google.Cloud.PubSub.V1" Version="3.0.0" />
     <PackageReference Include="Meziantou.Analyzer" Version="1.0.702">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

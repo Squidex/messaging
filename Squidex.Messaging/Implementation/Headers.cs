@@ -13,10 +13,10 @@ namespace Squidex.Messaging.Implementation
 
         public const string Type = "messaging.type";
 
-        public const string Key = "messaging.key";
+        public const string TimeCreated = "messaging.created";
 
         public const string TimeExpires = "messaging.expires";
 
-        public const string TimeRetry = "messaging.retry";
+        public const string TimeTimeout = "messaging.retry";
     }
 }

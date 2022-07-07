@@ -7,15 +7,19 @@
 
 #pragma warning disable MA0048 // File name must match type name
 
-using Squidex.Hosting;
-
 namespace Squidex.Messaging.Implementation
 {
-    public delegate Task MessageTransportCallback(TransportMessage transportMessage, IMessageAck ack,
+    public delegate Task MessageTransportCallback(TransportResult transportResult, IMessageAck ack,
             CancellationToken ct);
 
-    public interface ITransport : IInitializable
+    public interface ITransport
     {
+        Task InitializeAsync(ChannelOptions channelOptions,
+            CancellationToken ct);
+
+        Task ReleaseAsync(
+            CancellationToken ct);
+
         Task<IAsyncDisposable> SubscribeAsync(MessageTransportCallback callback,
             CancellationToken ct = default);
 

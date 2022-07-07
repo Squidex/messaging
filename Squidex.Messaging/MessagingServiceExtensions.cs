@@ -10,7 +10,9 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Squidex.Hosting;
 using Squidex.Messaging;
 using Squidex.Messaging.Implementation;
-using Squidex.Messaging.Implementation.MongoDB;
+using Squidex.Messaging.Implementation.GooglePubSub;
+using Squidex.Messaging.Implementation.Kafka;
+using Squidex.Messaging.Implementation.MongoDb;
 
 namespace Microsoft.Extensions.DependencyInjection
 {
@@ -23,6 +25,18 @@ namespace Microsoft.Extensions.DependencyInjection
                 ["MongoDb"] = () =>
                 {
                     services.AddMongoDbTransport(config);
+                },
+                ["Scheduler"] = () =>
+                {
+                    services.AddMongoDbTransport(config);
+                },
+                ["GooglePubSub"] = () =>
+                {
+                    services.AddGooglePubSubTransport(config);
+                },
+                ["Kafka"] = () =>
+                {
+                    services.AddKafkaTransport(config);
                 }
             });
 
@@ -39,6 +53,36 @@ namespace Microsoft.Extensions.DependencyInjection
             }
 
             services.AddSingletonAs<MongoDbTransportFactory>()
+                .As<ITransportFactory>().AsSelf();
+
+            return services;
+        }
+
+        public static IServiceCollection AddGooglePubSubTransport(this IServiceCollection services, IConfiguration config, Action<GooglePubSubTransportOptions>? configure = null)
+        {
+            services.Configure<GooglePubSubTransportOptions>(config, "messaging:googlePubSub");
+
+            if (configure != null)
+            {
+                services.Configure(configure);
+            }
+
+            services.AddSingletonAs<GooglePubSubTransportFactory>()
+                .As<ITransportFactory>().AsSelf();
+
+            return services;
+        }
+
+        public static IServiceCollection AddKafkaTransport(this IServiceCollection services, IConfiguration config, Action<KafkaTransportOptions>? configure = null)
+        {
+            services.Configure<KafkaTransportOptions>(config, "messaging:kafka");
+
+            if (configure != null)
+            {
+                services.Configure(configure);
+            }
+
+            services.AddSingletonAs<KafkaTransportFactory>()
                 .As<ITransportFactory>().AsSelf();
 
             return services;

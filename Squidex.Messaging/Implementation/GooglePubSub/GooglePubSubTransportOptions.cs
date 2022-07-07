@@ -5,20 +5,12 @@
 //  All rights reserved. Licensed under the MIT license.
 // ==========================================================================
 
-using MongoDB.Bson;
-using MongoDB.Bson.Serialization.Attributes;
-
-namespace Squidex.Messaging
+namespace Squidex.Messaging.Implementation.GooglePubSub
 {
-    internal sealed class MongoAssetEntity<T>
+    public sealed class GooglePubSubTransportOptions
     {
-        [BsonId]
-        public string Key { get; set; }
+        public string Prefix { get; set; }
 
-        [BsonIgnoreIfDefault]
-        public T Value { get; set; }
-
-        [BsonRepresentation(BsonType.String)]
-        public DateTime Expires { get; set; }
+        public string ProjectId { get; set; }
     }
 }

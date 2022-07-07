@@ -31,7 +31,7 @@ namespace Squidex.Messaging.Implementation
         private readonly ILogger<DelegatingConsumer> log;
         private bool isReleased;
 
-        sealed record ScheduledMessage(object Message, TransportMessage TransportMessage, IMessageAck Ack);
+        sealed record ScheduledMessage(object Message, TransportResult Result, IMessageAck Ack);
 
         public string Name => activity;
 
@@ -68,7 +68,7 @@ namespace Squidex.Messaging.Implementation
         public async Task InitializeAsync(
             CancellationToken ct)
         {
-            await transport.InitializeAsync(ct);
+            await transport.InitializeAsync(channelOptions, ct);
         }
 
         public async Task StartAsync(
@@ -137,7 +137,7 @@ namespace Squidex.Messaging.Implementation
             }
         }
 
-        private async Task OnMessageAsync(TransportMessage transportMessage, IMessageAck ack,
+        private async Task OnMessageAsync(TransportResult transportResult, IMessageAck ack,
             CancellationToken ct)
         {
             if (isReleased)
@@ -147,17 +147,19 @@ namespace Squidex.Messaging.Implementation
 
             using (var trace = MessagingTelemetry.Activities.StartActivity(activity))
             {
-                if (transportMessage.Created != default && trace?.Id != null)
+                transportResult.Message.Headers.TryGetDateTime(Headers.TimeCreated, out var created);
+
+                if (created != default && trace?.Id != null)
                 {
                     MessagingTelemetry.Activities.StartActivity("QueueTime", ActivityKind.Internal, trace.Id,
-                        startTime: transportMessage.Created)?.Stop();
+                        startTime: created)?.Stop();
                 }
 
-                var typeString = transportMessage.Headers?.GetValueOrDefault(Headers.Type) ?? string.Empty;
+                var typeString = transportResult.Message.Headers?.GetValueOrDefault(Headers.Type) ?? string.Empty;
 
                 if (string.IsNullOrWhiteSpace(typeString))
                 {
-                    await ack.OnSuccessAsync(transportMessage);
+                    await ack.OnSuccessAsync(transportResult);
 
                     log.LogWarning("Message has no type header.");
                     return;
@@ -165,7 +167,7 @@ namespace Squidex.Messaging.Implementation
 
                 if (typeString == "null")
                 {
-                    await worker.SendAsync(new ScheduledMessage(default!, transportMessage, ack), ct);
+                    await worker.SendAsync(new ScheduledMessage(default!, transportResult, ack), ct);
                     return;
                 }
 
@@ -173,15 +175,15 @@ namespace Squidex.Messaging.Implementation
 
                 if (type == null)
                 {
-                    await ack.OnSuccessAsync(transportMessage);
+                    await ack.OnSuccessAsync(transportResult);
 
                     log.LogWarning("Message has invalid or unknown type {type}.", typeString);
                     return;
                 }
 
-                var message = serializer.Deserialize(transportMessage.Data, type);
+                var message = serializer.Deserialize(transportResult.Message.Data, type);
 
-                await worker.SendAsync(new ScheduledMessage(message, transportMessage, ack), ct);
+                await worker.SendAsync(new ScheduledMessage(message, transportResult, ack), ct);
             }
         }
     }

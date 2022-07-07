@@ -5,12 +5,11 @@
 //  All rights reserved. Licensed under the MIT license.
 // ==========================================================================
 
-using System.Globalization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MongoDB.Driver;
 
-namespace Squidex.Messaging.Implementation.MongoDB
+namespace Squidex.Messaging.Implementation.MongoDb
 {
     public sealed class MongoDbTransport : ITransport
     {
@@ -35,7 +34,7 @@ namespace Squidex.Messaging.Implementation.MongoDB
             collection = database.GetCollection<MongoDbMessage>($"{options.Value.CollectionName}_{channelName}");
         }
 
-        public Task InitializeAsync(
+        public Task InitializeAsync(ChannelOptions channelOptions,
             CancellationToken ct)
         {
             if (isInitialized)
@@ -107,29 +106,24 @@ namespace Squidex.Messaging.Implementation.MongoDB
         public Task ProduceAsync(TransportMessage transportMessage,
             CancellationToken ct = default)
         {
-            var headers = transportMessage.Headers.ToDictionary(x => x.Key, x => x.Value);
-
             var request = new MongoDbMessage
             {
-                Id = headers[Headers.Id],
+                Id = transportMessage.Headers[Headers.Id],
                 MessageData = transportMessage.Data,
-                MessageHeaders = headers,
-                TimeToLive = GetTimeToLive(headers),
+                MessageHeaders = transportMessage.Headers,
+                TimeToLive = GetTimeToLive(transportMessage.Headers),
             };
 
             return collection.InsertOneAsync(request, null, ct);
         }
 
-        private DateTime GetTimeToLive(IReadOnlyDictionary<string, string> headers)
+        private DateTime GetTimeToLive(TransportHeaders headers)
         {
             var time = TimeSpan.FromDays(30);
 
-            if (headers.TryGetValue(Headers.TimeExpires, out var timeToBeReceivedString))
+            if (headers.TryGetTimestamp(Headers.TimeExpires, out var expires))
             {
-                if (TimeSpan.TryParse(timeToBeReceivedString, CultureInfo.InvariantCulture, out var parsed))
-                {
-                    time = parsed;
-                }
+                time = expires;
             }
 
             return clock.UtcNow + time;

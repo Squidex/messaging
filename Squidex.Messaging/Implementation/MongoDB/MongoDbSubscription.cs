@@ -8,7 +8,7 @@
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
 
-namespace Squidex.Messaging.Implementation.MongoDB
+namespace Squidex.Messaging.Implementation.MongoDb
 {
     internal sealed class MongoDbSubscription : IAsyncDisposable, IMessageAck
     {
@@ -16,11 +16,11 @@ namespace Squidex.Messaging.Implementation.MongoDB
         private readonly IMongoCollection<MongoDbMessage> collection;
         private readonly MongoDbTransportOptions options;
         private readonly IClock clock;
-        private readonly ILogger<MongoDbTransport> log;
+        private readonly ILogger log;
         private readonly SimpleTimer timer;
 
         public MongoDbSubscription(MessageTransportCallback callback, IMongoCollection<MongoDbMessage> collection,
-            MongoDbTransportOptions options, IClock clock, ILogger<MongoDbTransport> log)
+            MongoDbTransportOptions options, IClock clock, ILogger log)
         {
             this.collection = collection;
             this.options = options;
@@ -66,7 +66,7 @@ namespace Squidex.Messaging.Implementation.MongoDB
                 return false;
             }
 
-            await callback(mongoMessage.ToTransportMessage(), this, ct);
+            await callback(mongoMessage.ToTransportResult(), this, ct);
             return true;
         }
 
@@ -122,7 +122,7 @@ namespace Squidex.Messaging.Implementation.MongoDB
                     return false;
                 }
 
-                await callback(mongoMessage.ToTransportMessage(), this, ct);
+                await callback(mongoMessage.ToTransportResult(), this, ct);
             }
 
             return true;
@@ -135,12 +135,12 @@ namespace Squidex.Messaging.Implementation.MongoDB
             return default;
         }
 
-        public async Task OnErrorAsync(TransportMessage message,
+        public async Task OnErrorAsync(TransportResult result,
             CancellationToken ct = default)
         {
-            if (timer.IsDisposed || message.Headers == null || !message.Headers.TryGetValue(Headers.Id, out var id))
+            if (timer.IsDisposed || result.Data is not string id)
             {
-                log.LogWarning("Transport message has no MongoDB ID.");
+                log.LogWarning("Transport message has no MongoDb ID.");
                 return;
             }
 
@@ -154,12 +154,12 @@ namespace Squidex.Messaging.Implementation.MongoDB
             }
         }
 
-        public async Task OnSuccessAsync(TransportMessage message,
+        public async Task OnSuccessAsync(TransportResult result,
             CancellationToken ct = default)
         {
-            if (timer.IsDisposed || message.Headers == null || !message.Headers.TryGetValue(Headers.Id, out var id))
+            if (timer.IsDisposed || result.Data is not string id)
             {
-                log.LogWarning("Transport message has no MongoDB ID.");
+                log.LogWarning("Transport message has no MongoDb ID.");
                 return;
             }
 

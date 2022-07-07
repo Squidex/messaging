@@ -5,7 +5,7 @@
 //  All rights reserved. Licensed under the MIT license.
 // ==========================================================================
 
-namespace Squidex.Messaging.Implementation.MongoDB
+namespace Squidex.Messaging.Implementation.MongoDb
 {
     public sealed class MongoDbTransportOptions
     {

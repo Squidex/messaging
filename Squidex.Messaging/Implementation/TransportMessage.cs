@@ -9,14 +9,5 @@
 
 namespace Squidex.Messaging.Implementation
 {
-    public sealed record TransportMessage(byte[] Data)
-    {
-        public string? Key { get; init; }
-
-        public DateTime Expires { get; init; }
-
-        public DateTime Created { get; init; }
-
-        public IReadOnlyDictionary<string, string> Headers { get; init; }
-    }
+    public sealed record TransportMessage(byte[] Data, string? Key, TransportHeaders Headers);
 }

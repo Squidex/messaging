@@ -9,15 +9,17 @@ using MongoDB.Bson.Serialization.Attributes;
 
 #pragma warning disable MA0048 // File name must match type name
 
-namespace Squidex.Messaging.Implementation.MongoDB
+namespace Squidex.Messaging.Implementation.MongoDb
 {
     internal sealed class MongoDbMessage
     {
         public string Id { get; init; }
 
+        public string? PrefetchId { get; init; }
+
         public byte[] MessageData { get; init; }
 
-        public Dictionary<string, string> MessageHeaders { get; init; }
+        public TransportHeaders MessageHeaders { get; init; }
 
         [BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
         public DateTime TimeToLive { get; init; }
@@ -25,14 +27,11 @@ namespace Squidex.Messaging.Implementation.MongoDB
         [BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
         public DateTime? TimeHandled { get; init; }
 
-        public string? PrefetchId { get; set; }
-
-        public TransportMessage ToTransportMessage()
+        public TransportResult ToTransportResult()
         {
-            return new TransportMessage(MessageData)
-            {
-                Headers = MessageHeaders
-            };
+            var message = new TransportMessage(MessageData, null, MessageHeaders);
+
+            return new TransportResult(message, Id);
         }
     }
 

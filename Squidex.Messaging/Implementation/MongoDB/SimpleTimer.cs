@@ -7,7 +7,7 @@
 
 using Microsoft.Extensions.Logging;
 
-namespace Squidex.Messaging.Implementation.MongoDB
+namespace Squidex.Messaging.Implementation.MongoDb
 {
     internal sealed class SimpleTimer : IDisposable
     {

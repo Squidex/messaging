@@ -25,7 +25,8 @@ namespace Squidex.Messaging.Implementation
             string channelName,
             ITransportFactory transportProvider,
             ITransportSerializer serializer,
-            IOptionsMonitor<ChannelOptions> channelOptions, IClock clock)
+            IOptionsMonitor<ChannelOptions> channelOptions,
+            IClock clock)
         {
             activity = $"Messaging.Produce({channelName})";
 
@@ -43,7 +44,7 @@ namespace Squidex.Messaging.Implementation
         public Task InitializeAsync(
             CancellationToken ct)
         {
-            return transport.InitializeAsync(ct);
+            return transport.InitializeAsync(channelOptions, ct);
         }
 
         public Task ReleaseAsync(
@@ -64,19 +65,14 @@ namespace Squidex.Messaging.Implementation
                     key = Guid.NewGuid().ToString();
                 }
 
-                var transportMessage = new TransportMessage(data)
-                {
-                    Key = key,
-                    Headers = new Dictionary<string, string>
-                    {
-                        [Headers.Id] = Guid.NewGuid().ToString(),
-                        [Headers.Type] = message?.GetType().AssemblyQualifiedName ?? "null",
-                        [Headers.TimeExpires] = channelOptions.Expires.ToString(),
-                        [Headers.TimeRetry] = channelOptions.Timeout.ToString(),
-                        [Headers.Key] = key ?? string.Empty
-                    },
-                    Created = clock.UtcNow
-                };
+                var headers = new TransportHeaders()
+                    .Set(Headers.Id, Guid.NewGuid())
+                    .Set(Headers.Type, message?.GetType().AssemblyQualifiedName ?? "null")
+                    .Set(Headers.TimeExpires, channelOptions.Expires)
+                    .Set(Headers.TimeTimeout, channelOptions.Timeout)
+                    .Set(Headers.TimeCreated, clock.UtcNow);
+
+                var transportMessage = new TransportMessage(data, key, headers);
 
                 await transport.ProduceAsync(transportMessage, ct);
             }

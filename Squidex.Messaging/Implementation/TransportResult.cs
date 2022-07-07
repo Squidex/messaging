@@ -5,21 +5,9 @@
 //  All rights reserved. Licensed under the MIT license.
 // ==========================================================================
 
-using NodaTime;
+#pragma warning disable SA1313 // Parameter names should begin with lower-case letter
 
 namespace Squidex.Messaging.Implementation
 {
-    public sealed class Envelope<T>
-    {
-        public Instant Created { get; init; }
-
-        public T Payload { get; init; }
-
-        public static Envelope<T> Create(T payload)
-        {
-            var created = SystemClock.Instance.GetCurrentInstant();
-
-            return new Envelope<T> { Created = created, Payload = payload };
-        }
-    }
+    public sealed record TransportResult(TransportMessage Message, object? Data);
 }

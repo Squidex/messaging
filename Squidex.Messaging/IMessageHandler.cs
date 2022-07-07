@@ -10,7 +10,7 @@ namespace Squidex.Messaging
     public interface IMessageHandler<in T> : IMessageHandler
     {
         Task HandleAsync(T message,
-            CancellationToken ct = default);
+            CancellationToken ct);
     }
 
     public interface IMessageHandler
