@@ -15,6 +15,6 @@ namespace Squidex.Messaging.Implementation.MongoDb
 
         public TimeSpan UpdateInterval { get; set; } = TimeSpan.FromSeconds(5);
 
-        public TimeSpan PollingInterval { get; set; } = TimeSpan.FromSeconds(5);
+        public TimeSpan PollingInterval { get; set; } = TimeSpan.FromSeconds(1);
     }
 }

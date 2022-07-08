@@ -51,9 +51,9 @@ namespace Squidex.Messaging.Implementation
             }
         }
 
-        public IEnumerable<Func<object, CancellationToken, Task>> GetHandlers(object message)
+        public IEnumerable<Func<object, CancellationToken, Task>> GetHandlers(Type type)
         {
-            if (handlersByType.TryGetValue(message.GetType(), out var handlers))
+            if (handlersByType.TryGetValue(type, out var handlers))
             {
                 return handlers;
             }

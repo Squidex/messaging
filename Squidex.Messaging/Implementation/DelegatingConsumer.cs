@@ -31,7 +31,7 @@ namespace Squidex.Messaging.Implementation
 
         sealed record ScheduledMessage(Type Type, TransportResult Result, IMessageAck Ack);
 
-        public string Name => activity;
+        public string Name => $"Messaging.Consumer({channelName})";
 
         public string ChannelName => channelName;
 
@@ -101,21 +101,26 @@ namespace Squidex.Messaging.Implementation
         private async Task OnScheduledMessage(ScheduledMessage input)
         {
             var (type, transportResult, ack) = input;
-
-            object message;
             try
             {
-                message = serializer.Deserialize(transportResult.Message.Data, type);
-            }
-            catch (Exception ex)
-            {
-                log.LogError(ex, "Failed to deserialize message with type {type}.", type);
-                return;
-            }
+                object? message;
+                try
+                {
+                    message = serializer.Deserialize(transportResult.Message.Data, type);
+                }
+                catch (Exception ex)
+                {
+                    log.LogError(ex, "Failed to deserialize message with type {type}.", type);
+                    return;
+                }
 
-            try
-            {
-                var handlers = pipeline.GetHandlers(message);
+                if (message == null)
+                {
+                    log.LogError("Failed to deserialize message with type {type}.", type);
+                    return;
+                }
+
+                var handlers = pipeline.GetHandlers(message.GetType());
 
                 foreach (var handler in handlers)
                 {
@@ -137,9 +142,13 @@ namespace Squidex.Messaging.Implementation
                     }
                     catch (Exception ex)
                     {
-                        log.LogError(ex, "Failed to consume message for system {system}.", Name);
+                        log.LogError(ex, "Failed to consume message for system {system} with type {type}.", Name, type);
                     }
                 }
+            }
+            catch (Exception ex)
+            {
+                log.LogError(ex, "Failed to consume message with type {type}.", type);
             }
             finally
             {

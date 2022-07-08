@@ -19,6 +19,8 @@ namespace Squidex.Messaging.Implementation
         private readonly IClock clock;
         private readonly ChannelOptions channelOptions;
 
+        public string Name => $"Messaging.Producer({channelName})";
+
         public string ChannelName => channelName;
 
         public DelegatingProducer(

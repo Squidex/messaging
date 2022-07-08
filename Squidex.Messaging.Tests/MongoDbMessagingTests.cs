@@ -24,7 +24,12 @@ namespace Squidex.Messaging
         {
             services
                 .AddSingleton(_.Database)
-                .AddMongoDbTransport(TestHelpers.Configuration)
+                .AddMongoDbTransport(TestHelpers.Configuration, options =>
+                {
+                    options.Prefetch = 5;
+                    options.PollingInterval = TimeSpan.FromSeconds(0.1);
+                    options.UpdateInterval = TimeSpan.FromSeconds(0.1);
+                })
                 .AddMessaging(channelName, true, options =>
                 {
                     options.Expires = TimeSpan.FromDays(1);
