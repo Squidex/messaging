@@ -7,6 +7,7 @@
 
 using Microsoft.Extensions.Options;
 using Squidex.Hosting;
+using Squidex.Messaging.Internal;
 
 namespace Squidex.Messaging.Implementation
 {
@@ -58,6 +59,8 @@ namespace Squidex.Messaging.Implementation
         public async Task ProduceAsync(object message, string? key = null,
             CancellationToken ct = default)
         {
+            Guard.NotNull(message, nameof(message));
+
             using (MessagingTelemetry.Activities.StartActivity(activity))
             {
                 var data = serializer.Serialize(message);
@@ -67,9 +70,17 @@ namespace Squidex.Messaging.Implementation
                     key = Guid.NewGuid().ToString();
                 }
 
+                var typeName = message?.GetType().AssemblyQualifiedName;
+
+                if (string.IsNullOrWhiteSpace(typeName))
+                {
+                    ThrowHelper.ArgumentException("Cannot calculate type name.", nameof(message));
+                    return;
+                }
+
                 var headers = new TransportHeaders()
                     .Set(HeaderNames.Id, Guid.NewGuid())
-                    .Set(HeaderNames.Type, message?.GetType().AssemblyQualifiedName ?? "null")
+                    .Set(HeaderNames.Type, typeName)
                     .Set(HeaderNames.TimeExpires, channelOptions.Expires)
                     .Set(HeaderNames.TimeTimeout, channelOptions.Timeout)
                     .Set(HeaderNames.TimeCreated, clock.UtcNow);

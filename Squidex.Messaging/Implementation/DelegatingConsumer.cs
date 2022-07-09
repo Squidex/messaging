@@ -10,6 +10,7 @@ using System.Threading.Tasks.Dataflow;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Squidex.Hosting;
+using Squidex.Messaging.Implementation.Scheduler;
 
 #pragma warning disable SA1313 // Parameter names should begin with lower-case letter
 #pragma warning disable RECS0082 // Parameter has the same name as a member and hides it
@@ -22,14 +23,12 @@ namespace Squidex.Messaging.Implementation
         private readonly string channelName;
         private readonly List<IAsyncDisposable> subscriptions = new List<IAsyncDisposable>();
         private readonly ChannelOptions channelOptions;
-        private readonly ActionBlock<ScheduledMessage> worker;
         private readonly HandlerPipeline pipeline;
+        private readonly IScheduler scheduler;
         private readonly ITransportSerializer serializer;
         private readonly ITransport transport;
         private readonly ILogger<DelegatingConsumer> log;
         private bool isReleased;
-
-        sealed record ScheduledMessage(Type Type, TransportResult Result, IMessageAck Ack);
 
         public string Name => $"Messaging.Consumer({channelName})";
 
@@ -52,15 +51,9 @@ namespace Squidex.Messaging.Implementation
             this.pipeline = pipeline;
             this.channelName = channelName;
             this.channelOptions = channelOptions.Get(channelName);
+            this.scheduler = this.channelOptions.Scheduler ?? InlineScheduler.Instance;
             this.serializer = serializer;
             this.log = log;
-
-            worker = new ActionBlock<ScheduledMessage>(OnScheduledMessage, new ExecutionDataflowBlockOptions
-            {
-                MaxMessagesPerTask = 1,
-                MaxDegreeOfParallelism = this.channelOptions.NumWorkers,
-                BoundedCapacity = 1
-            });
         }
 
         public async Task InitializeAsync(
@@ -98,12 +91,14 @@ namespace Squidex.Messaging.Implementation
             await transport.ReleaseAsync(ct);
         }
 
-        private async Task OnScheduledMessage(ScheduledMessage input)
+        private async Task OnScheduledMessage((Type type, TransportResult TtransportResult, IMessageAck Ack) args,
+            CancellationToken ct)
         {
-            var (type, transportResult, ack) = input;
+            var (type, transportResult, ack) = args;
             try
             {
-                object? message;
+                object? message = null;
+
                 try
                 {
                     message = serializer.Deserialize(transportResult.Message.Data, type);
@@ -120,7 +115,7 @@ namespace Squidex.Messaging.Implementation
                     return;
                 }
 
-                var handlers = pipeline.GetHandlers(message.GetType());
+                var handlers = pipeline.GetHandlers(type);
 
                 foreach (var handler in handlers)
                 {
@@ -133,7 +128,10 @@ namespace Squidex.Messaging.Implementation
                     {
                         using (var cts = new CancellationTokenSource(channelOptions.Timeout))
                         {
-                            await handler(message, cts.Token);
+                            using (var linked = CancellationTokenSource.CreateLinkedTokenSource(cts.Token, ct))
+                            {
+                                await handler(message, linked.Token);
+                            }
                         }
                     }
                     catch (OperationCanceledException)
@@ -189,12 +187,6 @@ namespace Squidex.Messaging.Implementation
                     return;
                 }
 
-                if (typeString == "null")
-                {
-                    await worker.SendAsync(new ScheduledMessage(default!, transportResult, ack), ct);
-                    return;
-                }
-
                 var type = Type.GetType(typeString);
 
                 if (type == null)
@@ -206,7 +198,7 @@ namespace Squidex.Messaging.Implementation
                     return;
                 }
 
-                await worker.SendAsync(new ScheduledMessage(type, transportResult, ack), ct);
+                await scheduler.ExecuteAsync((type, transportResult, ack), (args, ct) => OnScheduledMessage(args, ct), ct);
             }
         }
     }
