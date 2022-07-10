@@ -9,11 +9,11 @@ using System.Threading.Tasks.Dataflow;
 
 namespace Squidex.Messaging.Implementation.Scheduler
 {
-    internal class ConcurrentScheduler : IScheduler
+    public sealed class ParallelScheduler : IScheduler
     {
         private readonly ActionBlock<Func<Task>> actionBlock;
 
-        public ConcurrentScheduler(int maxDegreeOfParallelism)
+        public ParallelScheduler(int maxDegreeOfParallelism)
         {
             actionBlock = new ActionBlock<Func<Task>>(OnScheduledMessage, new ExecutionDataflowBlockOptions
             {
